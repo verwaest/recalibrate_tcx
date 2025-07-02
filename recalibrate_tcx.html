@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCX Watt Recalibrator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .logo {
+            width: 40px;
+            height: 40px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="file"],
+        input[type="text"],
+        input[type="number"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <svg class="logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7ZM12 15C10.34 15 9 13.66 9 12C9 10.34 10.34 9 12 9C13.66 9 15 10.34 15 12C15 13.66 13.66 15 12 15Z" fill="#3498db"/>
+            </svg>
+            TCX Watt Recalibrator
+        </h1>
+
+        <div class="form-group">
+            <label for="tcxFile">Upload TCX File:</label>
+            <input type="file" id="tcxFile" accept=".tcx">
+        </div>
+
+        <div class="form-group">
+            <label for="offsetValue">Watt Offset (e.g., -10 for -10W, 5 for +5W):</label>
+            <input type="number" id="offsetValue" value="0">
+        </div>
+
+        <div class="form-group" style="text-align: center;">
+            <input type="checkbox" id="recalculateCalories" checked> <label for="recalculateCalories" style="display: inline;">Recalculate Calories</label>
+        </div>
+
+        <button id="recalibrateButton">Recalibrate & Download</button>
+
+        <div id="message" class="message" style="display: none;"></div>
+
+    </div>
+
+    <div class="footer">
+        <p>This tool processes your TCX file entirely in your browser. No data is uploaded to a server.</p>
+    </div>
+
+    <script>
+        document.getElementById('recalibrateButton').addEventListener('click', recalibrateTCX);
+
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+        }
+
+        async function recalibrateTCX() {
+            const fileInput = document.getElementById('tcxFile');
+            const offsetValue = parseFloat(document.getElementById('offsetValue').value);
+            const recalculateCalories = document.getElementById('recalculateCalories').checked;
+            const messageDiv = document.getElementById('message');
+
+            messageDiv.style.display = 'none'; // Clear previous messages
+
+            if (!fileInput.files.length) {
+                showMessage('Please select a TCX file.', 'error');
+                return;
+            }
+
+            if (isNaN(offsetValue)) {
+                showMessage('Please enter a valid numeric offset.', 'error');
+                return;
+            }
+
+            console.log(`--- Recalibration Start ---`);
+            console.log(`Read Offset Value: ${offsetValue}`);
+            console.log(`Recalculate Calories checkbox state: ${recalculateCalories}`);
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+                const tcxContent = e.target.result;
+                try {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(tcxContent, "text/xml");
+
+                    // Check for parsing errors
+                    const errorNode = xmlDoc.querySelector('parsererror');
+                    if (errorNode) {
+                        showMessage(`Error parsing TCX file: ${errorNode.textContent}`, 'error');
+                        console.error('XML Parsing Error:', errorNode.textContent);
+                        return;
+                    }
+
+                    // Define common namespace URIs
+                    const tcx_ns_uri = 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2';
+                    const activity_ext_ns_uri = 'http://www.garmin.com/xmlschemas/ActivityExtension/v2'; // For ns3: elements like LX, AvgWatts, MaxWatts
+
+                    // --- First pass: Update individual Trackpoint Watts ---
+                    xmlDoc.querySelectorAll('Trackpoint').forEach((trackpointElement, tpIndex) => {
+                        const extensionsElement = trackpointElement.querySelector('Extensions'); // This querySelector is fine here as Extensions is direct child of Trackpoint
+                        if (extensionsElement) {
+                            // Use getElementsByTagNameNS to find TPX within Extensions
+                            const tpxElements = extensionsElement.getElementsByTagNameNS(activity_ext_ns_uri, 'TPX');
+                            let tpxElement = null;
+                            if (tpxElements.length > 0) {
+                                tpxElement = tpxElements[0];
+                            }
+
+                            if (tpxElement) {
+                                // Use getElementsByTagNameNS to find Watts within TPX
+                                const wattsElements = tpxElement.getElementsByTagNameNS(activity_ext_ns_uri, 'Watts');
+                                let wattsChild = null;
+                                if (wattsElements.length > 0) {
+                                    wattsChild = wattsElements[0];
+                                }
+
+                                if (wattsChild) {
+                                    try {
+                                        let currentWatts = parseFloat(wattsChild.textContent);
+                                        if (!isNaN(currentWatts)) {
+                                            let newWattsBeforeRound = currentWatts + offsetValue;
+                                            let newWatts = Math.max(0, newWattsBeforeRound); // Ensure no negative watts
+                                            wattsChild.textContent = String(Math.round(newWatts));
+                                            console.log(`Trackpoint ${tpIndex + 1}: Old Watts: ${currentWatts}, New (before rounding): ${newWattsBeforeRound}, Final: ${wattsChild.textContent}`);
+                                        } else {
+                                            console.warn(`Warning: 'Watts' content is not a number for trackpoint ${tpIndex + 1}: '${wattsChild.textContent}'.`);
+                                        }
+                                    } catch (error) {
+                                        console.warn(`Warning: Could not process 'Watts' value for trackpoint ${tpIndex + 1}. Skipping. Error:`, error);
+                                    }
+                                } else {
+                                    console.warn(`Warning: 'Watts' element not found within TPX for trackpoint ${tpIndex + 1}.`);
+                                }
+                            } else {
+                                console.warn(`Warning: TPX element not found within Extensions for trackpoint ${tpIndex + 1}. Cannot process Trackpoint Watts.`);
+                            }
+                        }
+                    });
+
+                    // --- Second pass: Update AvgWatts, MaxWatts, and optionally Calories for each Lap ---
+                    let lapIndex = 0; // For logging purposes
+                    xmlDoc.querySelectorAll('Lap').forEach(lapElement => {
+                        lapIndex++;
+                        const totalTimeSecondsElement = lapElement.querySelector('TotalTimeSeconds');
+                        let durationSeconds = 0;
+                        if (totalTimeSecondsElement && !isNaN(parseFloat(totalTimeSecondsElement.textContent))) {
+                            durationSeconds = parseFloat(totalTimeSecondsElement.textContent);
+                            console.log(`Lap ${lapIndex}: TotalTimeSeconds: ${durationSeconds}`); // Log duration
+                        } else {
+                            console.warn(`Lap ${lapIndex}: TotalTimeSeconds element not found or invalid: ${totalTimeSecondsElement ? totalTimeSecondsElement.textContent : 'N/A'}.`);
+                        }
+                        
+                        // Find the direct child Extensions element for the Lap
+                        let extensionsElement = null;
+                        for (const child of lapElement.children) {
+                            if (child.localName === 'Extensions') {
+                                extensionsElement = child;
+                                break;
+                            }
+                        }
+                        
+                        let correctedAvgWatts = null;
+
+                        if (extensionsElement) {
+                            // Use getElementsByTagNameNS to find LX within Extensions
+                            const lxElements = extensionsElement.getElementsByTagNameNS(activity_ext_ns_uri, 'LX');
+                            let lxElement = null;
+                            if (lxElements.length > 0) {
+                                lxElement = lxElements[0]; // Get the first LX element
+                            }
+                            
+                            if (lxElement) {
+                                // Use getElementsByTagNameNS to find AvgWatts within LX
+                                const avgWattsElements = lxElement.getElementsByTagNameNS(activity_ext_ns_uri, 'AvgWatts');
+                                let avgWattsChild = null;
+                                if (avgWattsElements.length > 0) {
+                                    avgWattsChild = avgWattsElements[0];
+                                }
+
+                                if (avgWattsChild) {
+                                    try {
+                                        let currentAvgWatts = parseFloat(avgWattsChild.textContent);
+                                        if (!isNaN(currentAvgWatts)) {
+                                            let newAvgWattsBeforeRound = currentAvgWatts + offsetValue;
+                                            let newAvgWatts = Math.max(0, newAvgWattsBeforeRound);
+                                            avgWattsChild.textContent = String(Math.round(newAvgWatts));
+                                            correctedAvgWatts = newAvgWatts;
+                                            console.log(`Lap ${lapIndex}: AvgWatts found. Old: ${currentAvgWatts}, New (before rounding): ${newAvgWattsBeforeRound}, Final: ${avgWattsChild.textContent}`);
+                                        } else {
+                                            console.warn(`Warning: 'AvgWatts' content is not a number for lap ${lapIndex}: '${avgWattsChild.textContent}'.`);
+                                        }
+                                    } catch (error) {
+                                        console.warn(`Warning: Could not process 'AvgWatts' value for lap ${lapIndex}. Skipping. Error:`, error);
+                                    }
+                                } else {
+                                    console.warn(`Warning: 'AvgWatts' element not found within LX for lap ${lapIndex}.`);
+                                }
+
+                                // Use getElementsByTagNameNS to find MaxWatts within LX
+                                const maxWattsElements = lxElement.getElementsByTagNameNS(activity_ext_ns_uri, 'MaxWatts');
+                                let maxWattsChild = null;
+                                if (maxWattsElements.length > 0) {
+                                    maxWattsChild = maxWattsElements[0];
+                                }
+
+                                if (maxWattsChild) {
+                                    try {
+                                        let currentMaxWatts = parseFloat(maxWattsChild.textContent);
+                                        if (!isNaN(currentMaxWatts)) {
+                                            let newMaxWattsBeforeRound = currentMaxWatts + offsetValue;
+                                            let newMaxWatts = Math.max(0, newMaxWattsBeforeRound);
+                                            maxWattsChild.textContent = String(Math.round(newMaxWatts));
+                                            console.log(`Lap ${lapIndex}: MaxWatts found. Old: ${currentMaxWatts}, New (before rounding): ${newMaxWattsBeforeRound}, Final: ${maxWattsChild.textContent}`);
+                                        } else {
+                                            console.warn(`Warning: 'MaxWatts' content is not a number for lap ${lapIndex}: '${maxWattsChild.textContent}'.`);
+                                        }
+                                    } catch (error) {
+                                        console.warn(`Warning: Could not process 'MaxWatts' value for lap ${lapIndex}. Skipping. Error:`, error);
+                                    }
+                                } else {
+                                    console.warn(`Warning: 'MaxWatts' element not found within LX for lap ${lapIndex}.`);
+                                }
+                            } else {
+                                console.warn(`Warning: LX element not found within Extensions for lap ${lapIndex}. Cannot process Avg/Max Watts.`);
+                            }
+                        } else {
+                            console.warn(`Warning: Extensions element not found as direct child of Lap for lap ${lapIndex}. Cannot process Avg/Max Watts.`);
+                        }
+                        
+                        // Log Corrected AvgWatts value here, after LX processing for diagnostics
+                        console.log(`Lap ${lapIndex}: Corrected AvgWatts after LX processing: ${correctedAvgWatts}`);
+
+
+                        // Recalculate Calories if requested and data is available
+                        console.log(`Lap ${lapIndex}: Calorie Recalculation Check - Checkbox: ${recalculateCalories}, Corrected AvgWatts: ${correctedAvgWatts}, Duration Seconds: ${durationSeconds}`);
+
+                        if (recalculateCalories && correctedAvgWatts !== null && durationSeconds > 0) {
+                            // Get original calories for logging BEFORE modification
+                            let caloriesElement = lapElement.querySelector('Calories');
+                            let originalCalories = caloriesElement ? caloriesElement.textContent : 'N/A (element not found, new element will be created)';
+                            
+                            // Calories (kcal) = Avg Power (W) * Duration (hours) * 3.6 (consistent with your Python script)
+                            let newCaloriesBeforeRound = (correctedAvgWatts * (durationSeconds / 3600.0)) * 3.6;
+                            let newCalories = Math.max(0, newCaloriesBeforeRound);
+
+                            if (!caloriesElement) {
+                                caloriesElement = xmlDoc.createElementNS(tcx_ns_uri, 'Calories'); // Use tcx_ns_uri for standard TCX elements
+                                lapElement.appendChild(caloriesElement);
+                                console.log(`Lap ${lapIndex}: Created new 'Calories' element.`);
+                            }
+                            caloriesElement.textContent = String(Math.round(newCalories));
+                            console.log(`Lap ${lapIndex}: Calories Change: Original: ${originalCalories}, New (before rounding): ${newCaloriesBeforeRound}, Final: ${caloriesElement.textContent}`);
+                        } else if (recalculateCalories) { // If checkbox is checked, but other conditions fail
+                            console.warn(`Lap ${lapIndex}: Could not recalculate calories because corrected AvgWatts is ${correctedAvgWatts} (null means not found/invalid) or durationSeconds is ${durationSeconds} (0 or invalid).`);
+                        }
+                    });
+
+                    const serializer = new XMLSerializer();
+                    const modifiedTcxContent = serializer.serializeToString(xmlDoc);
+
+                    console.log(`\n--- Recalibration Complete. Initiating Download. ---`);
+
+                    const blob = new Blob([modifiedTcxContent], { type: 'application/xml' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = file.name.replace('.tcx', `_recalibrated_${offsetValue > 0 ? '+' : ''}${offsetValue}W.tcx`);
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    showMessage('Successfully recalibrated watts and downloaded the file!', 'success');
+                    if (recalculateCalories) {
+                        showMessage('Successfully recalibrated watts and recalculated calories, then downloaded the file!', 'success');
+                    }
+
+                } catch (error) {
+                    console.error('Error during TCX processing:', error);
+                    showMessage(`An error occurred during processing: ${error.message}. Check console for details.`, 'error');
+                }
+            };
+
+            reader.onerror = () => {
+                showMessage('Error reading file.', 'error');
+            };
+
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
